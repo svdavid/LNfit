@@ -1,3 +1,5 @@
+"""code from Sam Norman-Haignere's cnn library"""
+
 import numpy as np
 import scipy.io as sio
 import h5py
@@ -17,6 +19,11 @@ def weights_tnorm(shape, sig=0.1, seed=0):
 
 def weights_norm(shape, sig=0.1, seed=0):
     W = tf.Variable(tf.random_normal(shape, stddev=sig, mean=0, seed=seed))
+    return W
+
+def weights_zeros(shape, sig=0.1, seed=0):
+    #W = tf.Variable(tf.random_normal(shape, stddev=0.001, mean=0, seed=seed))
+    W = tf.Variable(tf.zeros(shape))
     return W
 
 def poisson(response, prediction):
@@ -52,6 +59,8 @@ def kern2D(n_x, n_y, n_kern, sig, rank=None, seed=0, distr='tnorm'):
         fn = weights_tnorm
     elif distr == 'norm':
         fn = weights_norm
+    elif distr == 'zeros':
+        fn = weights_zeros
     else:
         raise NameError('No matching distribution')
 
@@ -119,6 +128,8 @@ class Net:
         # directory and file info
         if log_dir is None:
             self.log_dir = '/Users/svnh2/Desktop/projects/scratch'
+        elif log_dir[-1] == '/':
+            self.log_dir = log_dir[:-1]
         else:
             self.log_dir = log_dir
         if not os.path.exists(self.log_dir):
@@ -193,6 +204,18 @@ class Net:
                 self.layers[i]['b'] = tf.abs(kern2D(1, 1, self.layers[i]['n_kern'],
                                                     self.weight_scale, seed=seed_to_randint(self.seed)+i+self.n_layers,
                                                     distr='norm'))
+                self.layers[i]['Y'] = act(self.layers[i]['act'])(conv1d(X, self.layers[i]['W']) + self.layers[i]['b'])
+
+            elif self.layers[i]['type'] == 'reweight-positive-zero':
+
+                print('Loc reweight-positive-zero')
+
+                self.layers[i]['W'] = tf.abs(kern2D(1, n_input_feats, self.layers[i]['n_kern'],
+                                                    self.weight_scale, seed=seed_to_randint(self.seed)+i,
+                                                    distr='tnorm'))
+                self.layers[i]['b'] = tf.abs(kern2D(1, 1, self.layers[i]['n_kern'],
+                                                    self.weight_scale, seed=seed_to_randint(self.seed)+i+self.n_layers,
+                                                    distr='zeros'))
                 self.layers[i]['Y'] = act(self.layers[i]['act'])(conv1d(X, self.layers[i]['W']) + self.layers[i]['b'])
 
             elif self.layers[i]['type'] == 'normalization':
@@ -271,7 +294,7 @@ class Net:
 
     def train(self, F, D, learning_rate=0.5, max_iter=300, eval_interval=30, batch_size=None,
               train_val_test=None, early_stopping_steps=5, print_iter=True):
-
+        self.save()
         if train_val_test is None:
             train_val_test = np.zeros(D.shape[0])
 
